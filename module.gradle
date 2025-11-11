@@ -1,0 +1,9 @@
+ext {
+    moduleLibraryName = "SGameHook"
+    magiskModuleId = "zygisk_sgamehook"
+    moduleName = "SGameHook"
+    moduleAuthor = "huajiqaq"
+    moduleDescription = "王者正式服/体验服自定义名片与海报 - 体验服自定义海报 /data/data/gamepackage/files/ 下的 customtexjpg 为自定义名片 customtexpng 为自定义海报 QQ群746855036 开源链接 https://github.com/huajiqaq/Zygisk-SGameHook"
+    moduleVersion = "v1.0.0"
+    moduleVersionCode = 1
+}
