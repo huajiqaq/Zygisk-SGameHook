@@ -33,6 +33,7 @@
 #undef DO_API
 
 static uint64_t il2cpp_base = 0;
+static int g_Il2ArrOffset = offsetof(Il2CppArray, vector);
 
 void init_il2cpp_api(void *handle) {
 #define DO_API(r, n, p) {                      \
@@ -50,29 +51,49 @@ void init_il2cpp_api(void *handle) {
 void* get_method_ptr(const char* asmName, const char* ns, const char* cls, const char* method, int paramCount) {
     auto domain = il2cpp_domain_get();
     auto assembly = il2cpp_domain_assembly_open(domain, asmName);
-    if (!assembly) {
-        LOGE("Failed to get assembly: %s", asmName);
-        return nullptr;
-    }
     auto image = il2cpp_assembly_get_image(assembly);
-    if (!image) {
-        LOGE("Failed to get image from assembly: %s", asmName);
-        return nullptr;
-    }
     auto klass = il2cpp_class_from_name(image, ns, cls);
-    if (!klass) {
-        LOGE("Failed to get class: %s.%s", ns, cls);
-        return nullptr;
-    }
-
     auto methodInfo = il2cpp_class_get_method_from_name(klass, method, paramCount);
-    if (!methodInfo) {
-        LOGE("Failed to get method: %s.%s::%s with %d parameters", ns, cls, method, paramCount);
-        return nullptr;
+    return (void*)methodInfo->methodPointer;
+}
+
+// copy from frida-il2cpp-bridge
+int offsetOf(void* base, std::function<bool(void*)> condition, int depth = 512) {
+    uint8_t* ptr = reinterpret_cast<uint8_t*>(base);
+
+    if (depth > 0) {
+        for (int i = 0; i < depth; i++) {
+            if (condition(ptr + i)) {
+                return i;
+            }
+        }
+    } else {
+        for (int i = 0; i < -depth; i++) {
+            if (condition(ptr - i)) {
+                return -i;
+            }
+        }
     }
 
-    LOGI("Successfully resolved method pointer: %s.%s::%s -> %p", ns, cls, method, methodInfo->methodPointer);
-    return (void*)methodInfo->methodPointer;
+    return -1;
+}
+
+int getIl2ArrOffset(void* il2cpp_handle) {
+    auto Il2Str = il2cpp_string_new("v");
+    auto strClass = il2cpp_object_get_class(reinterpret_cast<Il2CppObject*>(Il2Str));
+    auto methodInfo = il2cpp_class_get_method_from_name(strClass, "ToCharArray", 0);
+
+    typedef Il2CppArray* (*ToCharArrayFunc)(Il2CppString*);
+    ToCharArrayFunc toCharArrayFunc = (ToCharArrayFunc)methodInfo->methodPointer;
+    Il2CppArray* arr = toCharArrayFunc(Il2Str);
+
+    int offset = offsetOf(arr, [](void* ptr) -> bool {
+        int16_t value = *reinterpret_cast<int16_t*>(ptr);
+        return value == 118;
+    });
+
+    if (offset == -1) return g_Il2ArrOffset;
+    return offset;
 }
 
 void il2cpp_api_init(void *handle) {
@@ -93,6 +114,9 @@ void il2cpp_api_init(void *handle) {
         sleep(1);
     }
     auto domain = il2cpp_domain_get();
+    // 在体验服可能偏移不一致 动态获取
+    g_Il2ArrOffset = getIl2ArrOffset(handle);
+    LOGI("Il2Arr offset: %d\n", g_Il2ArrOffset);
     il2cpp_thread_attach(domain);
 }
 
@@ -102,8 +126,7 @@ void* create_il2cpp_byte_array(const uint8_t* data, size_t size) {
     auto image = il2cpp_assembly_get_image(assembly);
     auto byteClass = il2cpp_class_from_name(image, "System", "Byte");
     auto arr = il2cpp_array_new(byteClass, size);
-    if (!arr) return nullptr;
-    memcpy(reinterpret_cast<uint8_t*>(arr) + sizeof(void*) * 4, data, size);
+    memcpy(reinterpret_cast<uint8_t*>(arr) + g_Il2ArrOffset, data, size);
     return arr;
 }
 
@@ -135,20 +158,11 @@ void* read_custom_texture_file(const char* filename) {
     }
 
     uint8_t* buffer = static_cast<uint8_t*>(malloc(size));
-    if (!buffer) {
-        fclose(fp);
-        LOGE("[-] malloc failed (size=%zu)", size);
-        return nullptr;
-    }
-
     fread(buffer, 1, size, fp);
     fclose(fp);
 
     void* arr = create_il2cpp_byte_array(buffer, size);
     free(buffer);
-    if (!arr) {
-        LOGE("[-] create_il2cpp_byte_array failed");
-    }
     return arr;
 }
 

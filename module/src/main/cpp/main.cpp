@@ -48,6 +48,22 @@ private:
     void preSpecialize(const char *package_name, const char *app_data_dir) {
         if (strcmp(package_name, GamePackageName) == 0 ||
             strcmp(package_name, GamePackageNameCe) == 0) {
+            bool skip_hook = false;
+
+            if (strcmp(package_name, GamePackageName) == 0) {
+                int dirfd = api->getModuleDir();
+                skip_hook = (openat(dirfd, "skipzsf", O_RDONLY) != -1);
+            } else if (strcmp(package_name, GamePackageNameCe) == 0) {
+                int dirfd = api->getModuleDir();
+                skip_hook = (openat(dirfd, "skiptyf", O_RDONLY) != -1);
+            }
+
+            if (skip_hook) {
+                LOGI("skip hook for game: %s", package_name);
+                api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+                return;
+            }
+
             LOGI("detect game: %s", package_name);
             enable_hack = true;
             game_data_dir = new char[strlen(app_data_dir) + 1];
